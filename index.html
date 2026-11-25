@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Podcast Audiogram Maker — free, no upload, no watermark</title>
+<meta name="description" content="Turn podcast audio into a vertical video with a moving waveform. Free, runs entirely in your browser — nothing is uploaded, no watermark.">
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#f2f4f8; --muted:#9aa3b2; --amber:#f5a524; --amber-d:#d18a0d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { max-width:960px; margin:0 auto; padding:28px 20px 8px; }
+  h1 { font-size:30px; margin:0 0 6px; }
+  h1 span { color:var(--amber); }
+  p.lead { color:var(--muted); margin:0 0 4px; max-width:640px; }
+  main { max-width:960px; margin:0 auto; padding:16px 20px 48px; display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start; }
+  @media (max-width:760px){ main{ grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .drop { border:2px dashed #3a4152; border-radius:12px; padding:26px 16px; text-align:center; color:var(--muted); cursor:pointer; }
+  .drop:hover, .drop.over { border-color:var(--amber); color:var(--text); }
+  .drop input { display:none; }
+  label { display:block; font-size:13px; color:var(--muted); margin:16px 0 6px; }
+  select, input[type=text] { width:100%; background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:9px 10px; font:inherit; }
+  .swatches { display:flex; gap:8px; flex-wrap:wrap; }
+  .swatch { width:44px; height:44px; border-radius:10px; border:2px solid transparent; cursor:pointer; padding:0; }
+  .swatch.sel { border-color:var(--amber); }
+  button { font:inherit; border:0; border-radius:10px; padding:11px 16px; cursor:pointer; }
+  .btn-primary { background:var(--amber); color:#111; font-weight:700; width:100%; }
+  .btn-primary:hover { background:#ffb63d; }
+  .btn-ghost { background:#222633; color:var(--text); width:100%; margin-top:8px; }
+  .btn-ghost:hover { background:#2b3040; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  canvas { width:100%; height:auto; display:block; border-radius:12px; background:#000; }
+  .status { font-size:14px; color:var(--muted); margin-top:10px; min-height:22px; }
+  .status.warn { color:var(--amber); }
+  .row { display:flex; gap:8px; }
+  .row button { flex:1; }
+  .time { display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-top:8px; font-variant-numeric:tabular-nums; }
+  footer { max-width:960px; margin:0 auto; padding:0 20px 32px; color:var(--muted); font-size:13px; }
+  footer a { color:var(--amber); }
+  .support { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .support a.star { color:var(--text); text-decoration:none; font-weight:700; }
+  .support a.star:hover { color:var(--amber); }
+  .support img { display:block; height:40px; width:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Podcast <span>Audiogram</span> Maker</h1>
+  <p class="lead">Turn podcast audio into a video with a moving waveform — free, no upload, no watermark.</p>
+  <p class="lead">Your audio never leaves your browser. Clips are kept to 60 seconds or less.</p>
+</header>
+
+<main>
+  <section class="card">
+    <canvas id="stage" width="720" height="1280"></canvas>
+    <div class="time"><span id="tCur">0:00</span><span id="tTot">0:00</span></div>
+    <div class="row" style="margin-top:10px">
+      <button id="playBtn" class="btn-primary" disabled>▶ Play</button>
+      <button id="exportBtn" class="btn-ghost" disabled>⬇ Export video (.webm)</button>
+    </div>
+    <p class="status" id="status">Load audio, or try the built-in sample tone — no file needed.</p>
+  </section>
+
+  <section class="card">
+    <label style="margin-top:0">1 · Audio</label>
+    <div class="drop" id="drop">Drop an audio file here<br>or click to choose one
+      <input type="file" id="fileInput" accept="audio/*">
+    </div>
+    <button id="sampleBtn" class="btn-ghost">♪ Use the built-in sample tone (12 s)</button>
+
+    <label for="titleInput">2 · Title on the video</label>
+    <input type="text" id="titleInput" value="My Podcast" maxlength="60" placeholder="Episode title">
+
+    <label>3 · Cover image</label>
+    <div class="swatches" id="swatches" role="group" aria-label="Built-in covers"></div>
+    <label for="coverInput" style="margin-top:10px">Or upload your own cover</label>
+    <input type="file" id="coverInput" accept="image/*">
+
+    <label for="styleSel">4 · Waveform style</label>
+    <select id="styleSel">
+      <option value="bars">Bars</option>
+      <option value="mirror">Mirrored bars</option>
+      <option value="line">Line</option>
+    </select>
+
+    <label for="colorSel">Waveform colour</label>
+    <select id="colorSel">
+      <option value="#f5a524">Amber</option>
+      <option value="#ffffff">White</option>
+      <option value="#4ade80">Green</option>
+      <option value="#38bdf8">Blue</option>
+    </select>
+    <p class="status">Export records the canvas at 30 fps with your audio and downloads a .webm video (720×1280). Export runs in real time — a 60 s clip takes 60 s to export.</p>
+  </section>
+</main>
+
+<footer>
+  <p>Free forever, no account, no upload, no watermark. Source: <a href="https://github.com/mrabr381/podcast-audiogram-maker">github.com/mrabr381/podcast-audiogram-maker</a></p>
+  <div class="support">
+    <a class="star" href="https://github.com/mrabr381/podcast-audiogram-maker" target="_blank" rel="noopener">⭐ Star on GitHub</a>
+    <a href="https://www.buymeacoffee.com/muhammadabubakar" target="_blank" rel="noopener"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="40"></a>
+  </div>
+  <p>Limits: clips are capped at 60 seconds; export is WebM (plays in browsers and most editors — convert to MP4 with ffmpeg if you need it). Headliner Basic is $9.99/month ($7.99 billed yearly), Pro $25.99; its free tier allows only 1 unwatermarked video/month.</p>
+</footer>
+
+<script src="waveform.js"></script>
+<script>
+(function () {
+  'use strict';
+  var A = window.Audiogram;
+  var W = 720, H = 1280;
+
+  var canvas = document.getElementById('stage');
+  var ctx = canvas.getContext('2d');
+  var statusEl = document.getElementById('status');
+  var playBtn = document.getElementById('playBtn');
+  var exportBtn = document.getElementById('exportBtn');
+  var sampleBtn = document.getElementById('sampleBtn');
+  var fileInput = document.getElementById('fileInput');
+  var drop = document.getElementById('drop');
+  var coverInput = document.getElementById('coverInput');
+  var titleInput = document.getElementById('titleInput');
+  var styleSel = document.getElementById('styleSel');
+  var colorSel = document.getElementById('colorSel');
+  var tCur = document.getElementById('tCur');
+  var tTot = document.getElementById('tTot');
+
+  var COVERS = [
+    { name: 'Midnight',  a: '#1b2a4a', b: '#0f1115' },
+    { name: 'Ember',    a: '#7c2d12', b: '#1c0a06' },
+    { name: 'Forest',   a: '#14532d', b: '#07130c' },
+    { name: 'Plum',     a: '#4c1d95', b: '#150826' },
+    { name: 'Slate',    a: '#334155', b: '#0f172a' }
+  ];
+  var coverIdx = 0;
+  var coverImg = null;      // uploaded Image, or null for gradient cover
+  var audioCtx = null;      // created on first user gesture
+  var buffer = null;        // decoded AudioBuffer (full file)
+  var clipSeconds = 0;      // capped length actually used
+  var bars = [];            // 0..1 peaks, computed from the audio
+  var source = null;        // current BufferSource
+  var dest = null;          // MediaStreamDestination (for export audio)
+  var startedAt = 0;        // audioCtx.currentTime when playback began
+  var offset = 0;           // seconds into the clip where playback started
+  var playing = false;
+  var raf = 0;
+  var recording = false;
+
+  // ---- built-in covers -------------------------------------------------
+  var sw = document.getElementById('swatches');
+  COVERS.forEach(function (c, i) {
+    var b = document.createElement('button');
+    b.className = 'swatch' + (i === 0 ? ' sel' : '');
+    b.title = c.name;
+    b.style.background = 'linear-gradient(135deg,' + c.a + ',' + c.b + ')';
+    b.addEventListener('click', function () {
+      coverIdx = i; coverImg = null;
+      sw.querySelectorAll('.swatch').forEach(function (x) { x.classList.remove('sel'); });
+      b.classList.add('sel');
+    });
+    sw.appendChild(b);
+  });
+
+  function setStatus(msg, warn) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (warn ? ' warn' : '');
+  }
+
+  function getAudioCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      dest = audioCtx.createMediaStreamDestination();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  // ---- sample tone: generated in code, no audio file --------------------
+  // 12 s of summed sines whose amplitude swells and dips, so the waveform
+  // visibly moves. Built as an AudioBuffer straight from sample math.
+  function makeSampleTone(actx) {
+    var sr = actx.sampleRate, dur = 12, n = sr * dur;
+    var buf = actx.createBuffer(1, n, sr);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < n; i++) {
+      var t = i / sr;
+      var phrase = Math.floor(t / 3) % 3;                 // chord changes every 3 s
+      var f = [220, 277.18, 329.63][phrase];
+      var env = 0.35 + 0.65 * Math.abs(Math.sin(Math.PI * t / 3)); // swell per phrase
+      var wobble = 1 + 0.25 * Math.sin(2 * Math.PI * 0.7 * t);
+      d[i] = 0.5 * env * wobble * (Math.sin(2 * Math.PI * f * t)
+        + 0.4 * Math.sin(2 * Math.PI * f * 2 * t)
+        + 0.2 * Math.sin(2 * Math.PI * f * 0.5 * t));
+    }
+    return buf;
+  }
+
+  // ---- loading audio ----------------------------------------------------
+  function loadBuffer(buf, label) {
+    buffer = buf;
+    clipSeconds = A.capDuration(buf.duration);
+    var ch = buf.getChannelData(0);
+    var step = Math.max(1, Math.floor(ch.length / 20000));
+    var down = new Float32Array(Math.ceil(ch.length / step));
+    for (var i = 0, j = 0; i < ch.length; i += step, j++) down[j] = ch[i];
+    bars = A.computeBars(down, 160);
+    tTot.textContent = A.formatTime(clipSeconds);
+    tCur.textContent = '0:00';
+    offset = 0; playing = false;
+    playBtn.disabled = false;
+    exportBtn.disabled = false;
+    playBtn.textContent = '▶ Play';
+    var warn = buf.duration > A.MAX_CLIP_SECONDS;
+    setStatus(label + ' loaded — ' + A.formatTime(buf.duration) +
+      (warn ? ' · capped to the first ' + A.MAX_CLIP_SECONDS + ' s for this clip.' : '.'), warn);
+    draw(0);
+  }
+
+  sampleBtn.addEventListener('click', function () {
+    var actx = getAudioCtx();
+    loadBuffer(makeSampleTone(actx), 'Sample tone (12 s)');
+  });
+
+  function loadFile(file) {
+    if (!file) return;
+    var actx = getAudioCtx();
+    file.arrayBuffer().then(function (ab) {
+      return actx.decodeAudioData(ab);
+    }).then(function (buf) {
+      loadBuffer(buf, '“' + file.name + '”');
+    }).catch(function () {
+      setStatus('Could not read that file — try an MP3, WAV or OGG audio file.', true);
+    });
+  }
+  fileInput.addEventListener('change', function () { loadFile(fileInput.files[0]); });
+  drop.addEventListener('click', function () { fileInput.click(); });
+  ['dragover', 'dragenter'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function (e) { loadFile(e.dataTransfer.files[0]); });
+
+  coverInput.addEventListener('change', function () {
+    var f = coverInput.files[0];
+    if (!f) return;
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function () { coverImg = img; draw(currentTime()); };
+    img.src = url;
+  });
+
+  // ---- drawing ---------------------------------------------------------
+  function currentTime() {
+    if (!buffer) return 0;
+    if (!playing) return offset;
+    var t = offset + (audioCtx.currentTime - startedAt);
+    return Math.min(t, clipSeconds);
+  }
+
+  function draw(t) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    if (coverImg) {
+      ctx.drawImage(coverImg, 0, 0, W, H);
+      g.addColorStop(0, 'rgba(0,0,0,0.15)');
+      g.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    } else {
+      var c = COVERS[coverIdx];
+      g.addColorStop(0, c.a); g.addColorStop(1, c.b);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    // cover art square, centred in the top half
+    var s = 480, x0 = (W - s) / 2, y0 = 150;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
+    if (coverImg) { ctx.drawImage(coverImg, x0, y0, s, s); }
+    else {
+      var cg = ctx.createLinearGradient(x0, y0, x0 + s, y0 + s);
+      cg.addColorStop(0, COVERS[coverIdx].a); cg.addColorStop(1, COVERS[coverIdx].b);
+      ctx.fillStyle = cg; ctx.fillRect(x0, y0, s, s);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = 'bold 200px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('♪', x0 + s / 2, y0 + s / 2 + 10);
+    }
+    ctx.restore();
+
+    // title
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = 'bold 44px system-ui, sans-serif';
+    var title = (titleInput.value || 'My Podcast').slice(0, 60);
+    ctx.fillText(title, W / 2, 720, W - 80);
+
+    // waveform
+    var color = colorSel.value, style = styleSel.value;
+    var p = clipSeconds ? t / clipSeconds : 0;
+    var n = bars.length, bw = (W - 80) / n;
+    var baseY = 900, maxH = 260;
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (var i = 0; i < n; i++) {
+      var h = Math.max(4, bars[i] * maxH);
+      var x = 40 + i * bw;
+      var played = (i / n) <= p;
+      ctx.globalAlpha = played ? 1 : 0.35;
+      if (style === 'line') {
+        var y = baseY - h / 2;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      } else if (style === 'mirror') {
+        ctx.fillRect(x, baseY - h / 2, Math.max(2, bw - 2), h);
+      } else {
+        ctx.fillRect(x, baseY - h, Math.max(2, bw - 2), h);
+      }
+    }
+    if (style === 'line') ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // progress bar + time
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(40, 1080, W - 80, 6);
+    ctx.fillStyle = color;
+    ctx.fillRect(40, 1080, (W - 80) * p, 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '28px system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(A.formatTime(t) + ' / ' + A.formatTime(clipSeconds), 40, 1140);
+    ctx.textAlign = 'right';
+    ctx.fillText('Made with Podcast Audiogram Maker', W - 40, 1140);
+  }
+
+  function tick() {
+    var t = currentTime();
+    tCur.textContent = A.formatTime(t);
+    draw(t);
+    if (playing && t >= clipSeconds) { stopPlayback(); return; }
+    if (playing) raf = requestAnimationFrame(tick);
+  }
+
+  function stopPlayback() {
+    if (source) { try { source.stop(); } catch (e) {} source = null; }
+    offset = currentTime();
+    playing = false;
+    cancelAnimationFrame(raf);
+    playBtn.textContent = '▶ Play';
+    if (offset >= clipSeconds) offset = 0;
+    draw(offset);
+  }
+
+  playBtn.addEventListener('click', function () {
+    if (!buffer) return;
+    var actx = getAudioCtx();
+    if (playing) { stopPlayback(); return; }
+    if (offset >= clipSeconds) offset = 0;
+    source = actx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(actx.destination);
+    if (dest) source.connect(dest);
+    source.onended = function () { if (playing) stopPlayback(); };
+    source.start(0, offset, clipSeconds - offset);
+    startedAt = actx.currentTime;
+    playing = true;
+    playBtn.textContent = '⏸ Pause';
+    raf = requestAnimationFrame(tick);
+  });
+
+  // ---- export -----------------------------------------------------------
+  exportBtn.addEventListener('click', function () {
+    if (!buffer || recording) return;
+    if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
+      setStatus('This browser cannot record video (MediaRecorder not available). Try Chrome or Firefox.', true);
+      return;
+    }
+    var actx = getAudioCtx();
+    var stream = canvas.captureStream(30);
+    if (dest && dest.stream) dest.stream.getAudioTracks().forEach(function (tr) { stream.addTrack(tr); });
+    var mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      .find(function (m) { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } }) || '';
+    var rec;
+    try { rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 5000000 } : undefined); }
+    catch (e) { setStatus('Recording failed to start in this browser.', true); return; }
+    var chunks = [];
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = function () {
+      recording = false;
+      exportBtn.disabled = false; playBtn.disabled = false;
+      var blob = new Blob(chunks, { type: 'video/webm' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = A.exportFilename(new Date());
+      a.click();
+      setStatus('Exported ' + (blob.size / 1048576).toFixed(1) + ' MB WebM video — check your downloads.');
+    };
+    // play from the start while recording
+    if (playing) stopPlayback();
+    offset = 0;
+    source = actx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(actx.destination);
+    if (dest) source.connect(dest);
+    source.start(0, 0, clipSeconds);
+    startedAt = actx.currentTime;
+    playing = true;
+    recording = true;
+    playBtn.disabled = true; exportBtn.disabled = true;
+    setStatus('Recording… ' + A.formatTime(clipSeconds) + ' — keep this tab open, it runs in real time.');
+    raf = requestAnimationFrame(tick);
+    rec.start(250);
+    setTimeout(function () {
+      if (rec.state !== 'inactive') rec.stop();
+      if (playing) stopPlayback();
+    }, clipSeconds * 1000 + 500);
+  });
+
+  [titleInput, styleSel, colorSel].forEach(function (el) {
+    el.addEventListener('input', function () { draw(currentTime()); });
+    el.addEventListener('change', function () { draw(currentTime()); });
+  });
+
+  draw(0);
+})();
+</script>
+</body>
+</html>
